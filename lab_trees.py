@@ -48,9 +48,13 @@ def load_and_split(filepath="data/telecom_churn.csv", random_state=42):
         Tuple (X_train, X_test, y_train, y_test) where X contains only
         NUMERIC_FEATURES and y is the `churned` column.
     """
-    # TODO: Load the CSV, select NUMERIC_FEATURES into X, use `churned` as y,
+    #  Load the CSV, select NUMERIC_FEATURES into X, use `churned` as y,
     #       split with test_size=0.2 and stratify=y.
-    pass
+    df = pd.read_csv(filepath)
+    X= df[NUMERIC_FEATURES]
+    y= df['churned']
+    X_train, X_test, y_train, y_test = train_test_split(X,y,random_state=random_state,test_size=0.2,stratify=y)
+    return X_train, X_test, y_train, y_test
 
 
 def build_decision_tree(X_train, y_train, max_depth=5, random_state=42):
@@ -63,9 +67,10 @@ def build_decision_tree(X_train, y_train, max_depth=5, random_state=42):
     Returns:
         Fitted DecisionTreeClassifier.
     """
-    # TODO: Fit a DecisionTreeClassifier with the given max_depth and seed.
-    pass
-
+    # : Fit a DecisionTreeClassifier with the given max_depth and seed.
+    dt = DecisionTreeClassifier(max_depth=max_depth,random_state=random_state)
+    dt.fit(X_train,y_train)
+    return dt
 
 def compute_ece(y_true, y_prob, n_bins=10):
     """Expected Calibration Error using equal-count (quantile) binning.
@@ -85,12 +90,31 @@ def compute_ece(y_true, y_prob, n_bins=10):
     Returns:
         ECE as a float in [0, 1].
     """
-    # TODO: Sort indices by y_prob ascending; use np.array_split to make
+    #  Sort indices by y_prob ascending; use np.array_split to make
     #       n_bins equal-size bins; for each bin compute
     #       (bin_size / total) * abs(mean_prob - fraction_positive); sum.
-    pass
-
-
+    order = np.argsort(y_prob) 
+    y_true_sorted = np.array(y_true)[order]
+    y_prob_sorted = np.array(y_prob)[order]
+    bins = np.array_split(np.arange(len(y_true)), n_bins)
+    
+    ece = 0 
+    n = len(y_true)
+    
+    for bin_indices in bins:
+        if len(bin_indices) == 0:
+            continue
+        
+        bin_size = len(bin_indices)
+        mean_prob = np.mean(y_prob_sorted[bin_indices])
+        actual_fraction = np.mean(y_true_sorted[bin_indices])
+        ece += (bin_size / n) * np.abs(mean_prob - actual_fraction)
+    
+    return ece
+        
+        
+        
+    
 def compare_dt_calibration(X_train, X_test, y_train, y_test):
     """Compare calibration of an unbounded DT vs a depth-5 DT.
 
@@ -101,10 +125,23 @@ def compare_dt_calibration(X_train, X_test, y_train, y_test):
     Returns:
         Dict with keys 'ece_unbounded' and 'ece_depth_5' (floats in [0, 1]).
     """
-    # TODO: Fit a DecisionTreeClassifier with max_depth=None; compute ECE on
+    #  Fit a DecisionTreeClassifier with max_depth=None; compute ECE on
     #       its test-set predict_proba. Fit another with max_depth=5; same.
     #       Return both as a dict.
-    pass
+    unbounded_tree = DecisionTreeClassifier(random_state=42,max_depth=None)
+    unbounded_tree.fit(X_train,y_train)
+    probs_unbounded = unbounded_tree.predict_proba(X_test)[:, 1]
+    
+    bounded_tree= DecisionTreeClassifier(random_state=42 ,max_depth=5 ) 
+    bounded_tree.fit(X_train,y_train)  
+    probs_bounded=bounded_tree.predict_proba(X_test)[:, 1] 
+    ece_unbounded = compute_ece(y_test,probs_unbounded)
+    eco_depth_5= compute_ece(y_test,probs_bounded) 
+    return{
+        "ece_unbounded":ece_unbounded,
+        "ece_depth_5": eco_depth_5
+    }   
+    
 
 
 def build_random_forest(X_train, y_train, n_estimators=100, max_depth=10,
