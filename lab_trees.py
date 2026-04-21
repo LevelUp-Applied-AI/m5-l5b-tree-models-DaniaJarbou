@@ -96,10 +96,10 @@ def compute_ece(y_true, y_prob, n_bins=10):
     order = np.argsort(y_prob) 
     y_true_sorted = np.array(y_true)[order]
     y_prob_sorted = np.array(y_prob)[order]
-    bins = np.array_split(np.arange(len(y_true)), n_bins)
+    bins = np.array_split(np.arange(len(y_true_sorted)), n_bins)
     
     ece = 0 
-    n = len(y_true)
+    n = len(y_true_sorted)
     
     for bin_indices in bins:
         if len(bin_indices) == 0:
@@ -136,10 +136,10 @@ def compare_dt_calibration(X_train, X_test, y_train, y_test):
     bounded_tree.fit(X_train,y_train)  
     probs_bounded=bounded_tree.predict_proba(X_test)[:, 1] 
     ece_unbounded = compute_ece(y_test,probs_unbounded)
-    eco_depth_5= compute_ece(y_test,probs_bounded) 
+    ece_depth_5= compute_ece(y_test,probs_bounded) 
     return{
         "ece_unbounded":ece_unbounded,
-        "ece_depth_5": eco_depth_5
+        "ece_depth_5": ece_depth_5
     }   
     
 
@@ -156,15 +156,22 @@ def build_random_forest(X_train, y_train, n_estimators=100, max_depth=10,
     Returns:
         Fitted RandomForestClassifier.
     """
-    # TODO: Fit a RandomForestClassifier with the given parameters.
-    pass
+    #  Fit a RandomForestClassifier with the given parameters.
+    rf= RandomForestClassifier(n_estimators=n_estimators,max_depth=max_depth,random_state=random_state,class_weight=class_weight)
+    rf.fit(X_train,y_train)
+    return rf
 
 
 def get_feature_importances(model, feature_names):
     """Return a dict of feature_name -> importance, sorted descending."""
-    # TODO: Zip feature_names with model.feature_importances_, sort by
+    #  Zip feature_names with model.feature_importances_, sort by
     #       importance descending, return as a regular dict.
-    pass
+    importances = model.feature_importances_
+    feat_dict = dict(zip(feature_names,importances))
+    sorted_dict =dict(
+        sorted(feat_dict.items(), key=lambda x: x[1], reverse=True)
+    )
+    return sorted_dict
 
 
 def evaluate_recall_at_threshold(model, X_test, y_test, threshold=0.5):
@@ -177,9 +184,11 @@ def evaluate_recall_at_threshold(model, X_test, y_test, threshold=0.5):
     Returns:
         Recall as a float in [0, 1].
     """
-    # TODO: Get predict_proba(X_test)[:, 1], threshold it, compute
+    #  Get predict_proba(X_test)[:, 1], threshold it, compute
     #       recall_score(y_test, y_pred, zero_division=0).
-    pass
+    y_probs = model.predict_proba(X_test)[:,1]
+    y_pred = (y_probs>=threshold).astype(int)
+    return recall_score(y_test,y_pred,zero_division=0)
 
 
 def compute_pr_auc(model, X_test, y_test):
@@ -194,8 +203,10 @@ def compute_pr_auc(model, X_test, y_test):
     Returns:
         Float in [0, 1].
     """
-    # TODO: Get predict_proba(X_test)[:, 1] and call average_precision_score.
-    pass
+    #  Get predict_proba(X_test)[:, 1] and call average_precision_score.
+    y_probs = model.predict_proba(X_test)[:,1]
+    auc_score = average_precision_score(y_test,y_probs)
+    return auc_score
 
 
 def plot_pr_curves(rf_default, rf_balanced, X_test, y_test, output_path):
@@ -204,17 +215,28 @@ def plot_pr_curves(rf_default, rf_balanced, X_test, y_test, output_path):
     Args:
         output_path: Destination path (e.g., 'results/pr_curves.png').
     """
-    # TODO: Create a matplotlib figure. Use PrecisionRecallDisplay.from_estimator
+    #  Create a matplotlib figure. Use PrecisionRecallDisplay.from_estimator
     #       for each model on the same axes. Title the plot. Save to
     #       output_path with plt.savefig. Close the figure.
-    pass
-
+    fig , ax = plt.subplots(figsize = (8,6))
+    
+    PrecisionRecallDisplay.from_estimator(rf_default,X_test,y_test,ax=ax, name="Default")
+    PrecisionRecallDisplay.from_estimator(rf_balanced,X_test,y_test,ax=ax, name="Balanced")
+    ax.set_title ("Precision-Recall Curve: Default vs. Balanced RF")
+    plt.savefig(output_path)
+    plt.close(fig)
 
 def plot_calibration_curves(rf_default, rf_balanced, X_test, y_test, output_path):
     """Plot calibration curves for both RF models and save as PNG."""
-    # TODO: Create a figure. Use CalibrationDisplay.from_estimator for each
+    # Create a figure. Use CalibrationDisplay.from_estimator for each
     #       model on the same axes. Save to output_path. Close the figure.
-    pass
+    fig , ax = plt.subplots(figsize = (8,6))
+    
+    CalibrationDisplay.from_estimator(rf_default,X_test,y_test,ax=ax, name="Default")
+    CalibrationDisplay.from_estimator(rf_balanced,X_test,y_test,ax=ax, name="Balanced")
+    ax.set_title ("Calibration Curve: Default vs. Balanced RF")
+    plt.savefig(output_path)
+    plt.close(fig)
 
 
 def build_logistic_regression(X_train_scaled, y_train, random_state=42):
@@ -228,9 +250,10 @@ def build_logistic_regression(X_train_scaled, y_train, random_state=42):
     Returns:
         Fitted LogisticRegression(max_iter=1000).
     """
-    # TODO: Fit a LogisticRegression(max_iter=1000, random_state=random_state).
-    pass
-
+    # Fit a LogisticRegression(max_iter=1000, random_state=random_state).
+    lr = LogisticRegression(random_state=random_state, max_iter=1000)
+    lr.fit(X_train_scaled,y_train)
+    return lr
 
 def find_tree_vs_linear_disagreement(rf_model, lr_model, X_test_raw,
                                      X_test_scaled, y_test, feature_names,
@@ -262,12 +285,30 @@ def find_tree_vs_linear_disagreement(rf_model, lr_model, X_test_raw,
           - prob_diff (float): |rf_proba - lr_proba|
           - true_label (int): 0 or 1
     """
-    # TODO: Compute predict_proba(:, 1) for both models on their respective
+    #  Compute predict_proba(:, 1) for both models on their respective
     #       X_test inputs. Take absolute difference. Find the sample index
     #       with the MAXIMUM difference (must be >= min_diff). Return the
     #       dict with all six fields populated.
-    pass
-
+    rf_probs = rf_model.predict_proba(X_test_raw)[:, 1]
+    lr_probs = lr_model.predict_proba(X_test_scaled)[:, 1]
+    
+    diffs =np.abs(rf_probs-lr_probs)
+    max_idx = np.argmax(diffs)
+    max_diff = diffs[max_idx]
+    if max_diff < min_diff:
+        return None
+    
+    sample_values = X_test_raw.iloc[max_idx]
+    sample_features = dict(zip(feature_names, sample_values))
+    
+    return {
+        "sample_idx": int(max_idx),
+        "feature_values": sample_features,
+        "rf_proba": float(rf_probs[max_idx]),
+        "lr_proba": float(lr_probs[max_idx]),
+        "prob_diff": float(max_diff),
+        "true_label": int(y_test.iloc[max_idx])
+    }
 
 def main():
     """Orchestrate all 7 lab tasks. Run with: python lab_trees.py"""
